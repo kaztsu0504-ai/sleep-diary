@@ -23,13 +23,37 @@ function translateAuthError(message: string): string {
   if (lower.includes("password should be at least")) {
     return "パスワードは6文字以上で設定してください。";
   }
-  if (lower.includes("rate limit") || lower.includes("too many requests")) {
+  if (lower.includes("different from the old password")) {
+    return "現在と同じパスワードは設定できません。別のパスワードを入力してください。";
+  }
+  if (
+    lower.includes("rate limit") ||
+    lower.includes("too many requests") ||
+    lower.includes("for security purposes, you can only request this after")
+  ) {
     return "リクエストが集中しています。しばらく時間をおいてから再度お試しください。";
   }
   if (lower.includes("invalid email")) {
     return "有効なメールアドレスを入力してください。";
   }
   return `認証エラーが発生しました（${message}）`;
+}
+
+async function getRequestOrigin(): Promise<string> {
+  const headerList = await headers();
+  const origin = headerList.get("origin");
+  if (origin) return origin;
+
+  const host = headerList.get("x-forwarded-host") ?? headerList.get("host");
+  if (!host) return "";
+
+  const proto =
+    headerList.get("x-forwarded-proto") ??
+    (host.startsWith("localhost") || host.startsWith("127.0.0.1")
+      ? "http"
+      : "https");
+
+  return `${proto}://${host}`;
 }
 
 export async function signInAction(formData: FormData): Promise<AuthActionResult> {
@@ -65,10 +89,7 @@ export async function signUpAction(formData: FormData): Promise<AuthActionResult
     return { error: "確認用パスワードが一致していません。" };
   }
 
-  const headerList = await headers();
-  const origin =
-    headerList.get("origin") ??
-    (headerList.get("host") ? `http://${headerList.get("host")}` : "");
+  const origin = await getRequestOrigin();
 
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signUp({
@@ -92,6 +113,73 @@ export async function signUpAction(formData: FormData): Promise<AuthActionResult
   return {
     successMessage:
       "確認メールを送信しました。メール内のリンクをクリックして登録を完了した後、ログインしてください。",
+  };
+}
+
+export async function requestPasswordResetAction(
+  formData: FormData
+): Promise<AuthActionResult> {
+  const email = String(formData.get("email") ?? "").trim();
+
+  if (!email) {
+    return { error: "メールアドレスを入力してください。" };
+  }
+
+  const origin = await getRequestOrigin();
+  const supabase = await createClient();
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: origin
+      ? `${origin}/auth/callback?next=/auth/reset-password`
+      : undefined,
+  });
+
+  if (error) {
+    return { error: translateAuthError(error.message) };
+  }
+
+  return {
+    successMessage:
+      "パスワード再設定用のメールを送信しました。メール内のリンクを開いて新しいパスワードを設定してください（届かない場合は迷惑メールフォルダもご確認ください）。",
+  };
+}
+
+export async function updatePasswordAction(
+  formData: FormData
+): Promise<AuthActionResult> {
+  const password = String(formData.get("password") ?? "");
+  const passwordConfirm = String(formData.get("passwordConfirm") ?? "");
+
+  if (!password) {
+    return { error: "新しいパスワードを入力してください。" };
+  }
+  if (password.length < 6) {
+    return { error: "パスワードは6文字以上で入力してください。" };
+  }
+  if (password !== passwordConfirm) {
+    return { error: "確認用パスワードが一致していません。" };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      error:
+        "認証セッションが見つかりません。パスワード再設定メールのリンクをもう一度開いてください。",
+    };
+  }
+
+  const { error } = await supabase.auth.updateUser({ password });
+
+  if (error) {
+    return { error: translateAuthError(error.message) };
+  }
+
+  return {
+    successMessage:
+      "パスワードを更新しました。このまま「すいみん日誌」をご利用いただけます。",
   };
 }
 

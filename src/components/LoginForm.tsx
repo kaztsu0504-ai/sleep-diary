@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import {
+  ArrowLeft,
   Eye,
   EyeOff,
   Lock,
@@ -13,20 +14,31 @@ import {
   LineChart,
   ShieldCheck,
 } from "lucide-react";
-import { signInAction, signUpAction } from "@/app/actions/auth";
+import {
+  requestPasswordResetAction,
+  signInAction,
+  signUpAction,
+} from "@/app/actions/auth";
+
+type AuthMode = "signin" | "signup" | "reset";
 
 interface LoginFormProps {
   initialError?: string;
+  initialMode?: AuthMode;
 }
 
-export function LoginForm({ initialError }: LoginFormProps) {
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
+export function LoginForm({
+  initialError,
+  initialMode = "signin",
+}: LoginFormProps) {
+  const [mode, setMode] = useState<AuthMode>(initialMode);
+  const [email, setEmail] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(initialError ?? null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  function handleSwitchMode(nextMode: "signin" | "signup") {
+  function handleSwitchMode(nextMode: AuthMode) {
     setMode(nextMode);
     setError(null);
     setSuccessMessage(null);
@@ -39,7 +51,9 @@ export function LoginForm({ initialError }: LoginFormProps) {
       const result =
         mode === "signin"
           ? await signInAction(formData)
-          : await signUpAction(formData);
+          : mode === "signup"
+          ? await signUpAction(formData)
+          : await requestPasswordResetAction(formData);
       if (result?.error) {
         setError(result.error);
       }
@@ -111,42 +125,59 @@ export function LoginForm({ initialError }: LoginFormProps) {
 
         {/* Right: Auth Card */}
         <section className="lg:col-span-7 rounded-3xl bg-white p-7 sm:p-9 border border-slate-200/80 shadow-[0_8px_30px_rgba(15,23,42,0.05)] flex flex-col justify-center">
-          {/* Mode Toggle */}
-          <div className="grid grid-cols-2 rounded-2xl bg-slate-100 p-1">
-            <button
-              type="button"
-              onClick={() => handleSwitchMode("signin")}
-              className={`rounded-xl py-2.5 text-sm font-semibold transition-all cursor-pointer ${
-                mode === "signin"
-                  ? "bg-white text-sky-700 shadow-sm"
-                  : "text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              ログイン
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSwitchMode("signup")}
-              className={`rounded-xl py-2.5 text-sm font-semibold transition-all cursor-pointer ${
-                mode === "signup"
-                  ? "bg-white text-sky-700 shadow-sm"
-                  : "text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              新規アカウント登録
-            </button>
-          </div>
+          {/* Mode Toggle or Back to Login */}
+          {mode === "reset" ? (
+            <div>
+              <button
+                type="button"
+                onClick={() => handleSwitchMode("signin")}
+                className="inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 -ml-2.5 text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition cursor-pointer"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                ログイン画面に戻る
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 rounded-2xl bg-slate-100 p-1">
+              <button
+                type="button"
+                onClick={() => handleSwitchMode("signin")}
+                className={`rounded-xl py-2.5 text-sm font-semibold transition-all cursor-pointer ${
+                  mode === "signin"
+                    ? "bg-white text-sky-700 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                ログイン
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSwitchMode("signup")}
+                className={`rounded-xl py-2.5 text-sm font-semibold transition-all cursor-pointer ${
+                  mode === "signup"
+                    ? "bg-white text-sky-700 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                新規アカウント登録
+              </button>
+            </div>
+          )}
 
           <div className="mt-6">
             <h2 className="text-xl font-bold text-slate-900">
               {mode === "signin"
                 ? "おかえりなさい"
-                : "睡眠日誌をはじめましょう"}
+                : mode === "signup"
+                ? "睡眠日誌をはじめましょう"
+                : "パスワードの再設定"}
             </h2>
             <p className="mt-1 text-sm text-slate-500">
               {mode === "signin"
                 ? "登録済みのメールアドレスとパスワードでログインしてください。"
-                : "メールアドレスとパスワードを設定して個人の記録スペースを作成します。"}
+                : mode === "signup"
+                ? "メールアドレスとパスワードを設定して個人の記録スペースを作成します。"
+                : "登録済みのメールアドレスを入力すると、パスワード再設定用のリンクを送信します。"}
             </p>
           </div>
 
@@ -186,54 +217,69 @@ export function LoginForm({ initialError }: LoginFormProps) {
                   type="email"
                   autoComplete="email"
                   required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
                   className="w-full rounded-xl border border-slate-200 bg-slate-50/70 pl-10 pr-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-sky-100 transition"
                 />
               </div>
             </div>
 
-            <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-slate-700 mb-1.5"
-              >
-                パスワード
-                {mode === "signup" && (
-                  <span className="ml-1.5 text-xs font-normal text-slate-400">
-                    （6文字以上）
-                  </span>
-                )}
-              </label>
-              <div className="relative">
-                <Lock className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <input
-                  id="password"
-                  name="password"
-                  type={showPassword ? "text" : "password"}
-                  autoComplete={
-                    mode === "signin" ? "current-password" : "new-password"
-                  }
-                  required
-                  minLength={6}
-                  placeholder="••••••••"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50/70 pl-10 pr-11 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-sky-100 transition"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                  aria-label={
-                    showPassword ? "パスワードを隠す" : "パスワードを表示"
-                  }
-                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
+            {mode !== "reset" && (
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label
+                    htmlFor="password"
+                    className="block text-sm font-medium text-slate-700"
+                  >
+                    パスワード
+                    {mode === "signup" && (
+                      <span className="ml-1.5 text-xs font-normal text-slate-400">
+                        （6文字以上）
+                      </span>
+                    )}
+                  </label>
+                  {mode === "signin" && (
+                    <button
+                      type="button"
+                      onClick={() => handleSwitchMode("reset")}
+                      className="text-xs font-medium text-sky-600 hover:text-sky-700 hover:underline transition cursor-pointer"
+                    >
+                      パスワードをお忘れですか？
+                    </button>
                   )}
-                </button>
+                </div>
+                <div className="relative">
+                  <Lock className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <input
+                    id="password"
+                    name="password"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete={
+                      mode === "signin" ? "current-password" : "new-password"
+                    }
+                    required
+                    minLength={6}
+                    placeholder="••••••••"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50/70 pl-10 pr-11 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-sky-100 transition"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    aria-label={
+                      showPassword ? "パスワードを隠す" : "パスワードを表示"
+                    }
+                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
 
             {mode === "signup" && (
               <div>
@@ -268,7 +314,9 @@ export function LoginForm({ initialError }: LoginFormProps) {
                 ? "処理中..."
                 : mode === "signin"
                 ? "ログインする"
-                : "アカウントを作成する"}
+                : mode === "signup"
+                ? "アカウントを作成する"
+                : "再設定メールを送信する"}
             </button>
           </form>
 
