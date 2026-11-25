@@ -17,16 +17,19 @@ import { updatePasswordAction } from "@/app/actions/auth";
 interface ResetPasswordFormProps {
   hasSession: boolean;
   userEmail: string;
+  tokenHash?: string;
 }
 
 export function ResetPasswordForm({
   hasSession,
   userEmail,
+  tokenHash,
 }: ResetPasswordFormProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const canReset = hasSession || Boolean(tokenHash);
 
   function handleSubmit(formData: FormData) {
     setError(null);
@@ -66,7 +69,7 @@ export function ResetPasswordForm({
           </div>
         </div>
 
-        {!hasSession ? (
+        {!canReset ? (
           <div className="mt-6 space-y-4">
             <div
               role="alert"
@@ -128,6 +131,9 @@ export function ResetPasswordForm({
             )}
 
             <form action={handleSubmit} className="mt-5 space-y-4">
+              {tokenHash && (
+                <input type="hidden" name="tokenHash" value={tokenHash} />
+              )}
               <div>
                 <label
                   htmlFor="new-password"

@@ -26,12 +26,15 @@ function translateAuthError(message: string): string {
   if (lower.includes("different from the old password")) {
     return "現在と同じパスワードは設定できません。別のパスワードを入力してください。";
   }
-  if (
-    lower.includes("rate limit") ||
-    lower.includes("too many requests") ||
-    lower.includes("for security purposes, you can only request this after")
-  ) {
-    return "リクエストが集中しています。しばらく時間をおいてから再度お試しください。";
+  const waitMatch = lower.match(/only request this after (\d+) seconds/);
+  if (waitMatch) {
+    return `セキュリティ保護のため、あと ${waitMatch[1]} 秒ほど待ってから再度お試しください。`;
+  }
+  if (lower.includes("email rate limit exceeded")) {
+    return "メール送信回数の上限に達しました。しばらく時間（最大1時間ほど）をおいてから再度お試しください。";
+  }
+  if (lower.includes("rate limit") || lower.includes("too many requests")) {
+    return "リクエストが集中しています。1分ほど待ってから再度お試しください。";
   }
   if (lower.includes("invalid email")) {
     return "有効なメールアドレスを入力してください。";
@@ -148,6 +151,7 @@ export async function updatePasswordAction(
 ): Promise<AuthActionResult> {
   const password = String(formData.get("password") ?? "");
   const passwordConfirm = String(formData.get("passwordConfirm") ?? "");
+  const tokenHash = String(formData.get("tokenHash") ?? "").trim();
 
   if (!password) {
     return { error: "新しいパスワードを入力してください。" };
@@ -165,10 +169,24 @@ export async function updatePasswordAction(
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return {
-      error:
-        "認証セッションが見つかりません。パスワード再設定メールのリンクをもう一度開いてください。",
-    };
+    if (!tokenHash) {
+      return {
+        error:
+          "認証セッションが見つかりません。パスワード再設定メールのリンクをもう一度開いてください。",
+      };
+    }
+
+    const { error: verifyError } = await supabase.auth.verifyOtp({
+      type: "recovery",
+      token_hash: tokenHash,
+    });
+
+    if (verifyError) {
+      return {
+        error:
+          "パスワード再設定リンクの有効期限が切れているか、すでに使用されています。ログイン画面から再設定メールをもう一度送信してください。",
+      };
+    }
   }
 
   const { error } = await supabase.auth.updateUser({ password });
